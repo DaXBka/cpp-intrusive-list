@@ -2,9 +2,40 @@
 
 #include <algorithm>
 
+namespace project {
+
 class ListHook {
+    template<class T>
+    friend class List;
+
 public:
-    ListHook(){};
+    ListHook() = default;
+
+    ListHook(const ListHook &) = delete;
+
+    ListHook(ListHook &&other) noexcept {
+        next_ = other.next_;
+        prev_ = other.prev_;
+
+        other.next_ = nullptr;
+        other.prev_ = nullptr;
+    }
+
+    ListHook& operator=(const ListHook &) = delete;
+
+    ListHook& operator=(ListHook &&other) noexcept {
+        next_ = other.next_;
+        prev_ = other.prev_;
+
+        other.next_ = nullptr;
+        other.prev_ = nullptr;
+
+        return *this;
+    }
+
+    ~ListHook() {
+        Unlink();
+    };
 
     bool IsLinked() const {
         return next_ != nullptr && prev_ != nullptr;
@@ -19,38 +50,34 @@ public:
         }
     };
 
-    ~ListHook() {
-        Unlink();
-    };
-
-    ListHook(const ListHook&) = delete;
-
 private:
-    template <class T>
-    friend class List;
+    void LinkBefore(ListHook *other) {
+        if (other->prev_ != nullptr) {
+            other->prev_->next_ = this;
+        }
 
-    void LinkBefore(ListHook* other) {
-        other->prev_->next_ = this;
         prev_ = other->prev_;
         other->prev_ = this;
         next_ = other;
     };
 
-private:
-    ListHook* next_ = nullptr;
-    ListHook* prev_ = nullptr;
+    ListHook *next_ = nullptr;
+    ListHook *prev_ = nullptr;
 };
 
-template <typename T>
+template<typename T>
 class List {
 public:
     class Iterator : public std::iterator<std::bidirectional_iterator_tag, T> {
     public:
-        explicit Iterator(T* elem) : pointer_(elem) {
+        Iterator() = delete;
+
+        explicit Iterator(T *elem) : pointer_(elem) {
+            assert(elem != nullptr && "Iterator: Pointer must not be null");
         }
 
-        Iterator& operator++() {
-            pointer_ = static_cast<T*>(pointer_->next_);
+        Iterator &operator++() {
+            pointer_ = CastToType(pointer_->next_);
             return *this;
         };
 
@@ -60,35 +87,62 @@ public:
             return tmp;
         };
 
-        T& operator*() const {
+        T &operator*() const {
             return *pointer_;
         };
 
-        T* operator->() const {
+        T *operator->() const {
             return pointer_;
         };
 
-        bool operator==(const Iterator& rhs) const {
+        bool operator==(const Iterator &rhs) const {
             return pointer_ == rhs.pointer_;
         };
-        bool operator!=(const Iterator& rhs) const {
+
+        bool operator!=(const Iterator &rhs) const {
             return pointer_ != rhs.pointer_;
         };
 
     private:
-        T* pointer_ = nullptr;
+        T *pointer_ = nullptr;
     };
 
-    List()= default;
-    List(const List&) = delete;
-    List(List&& other) noexcept {
+public:
+    List() = default;
+
+    List(const List &) = delete;
+
+    List(List &&other) noexcept {
         dummy_.next_ = other.dummy_.next_;
         dummy_.prev_ = other.dummy_.prev_;
 
-        dummy_.prev_->next_ = &dummy_;
-        dummy_.next_->prev_ = &dummy_;
+        if (dummy_.prev_ != nullptr) {
+            dummy_.prev_->next_ = &dummy_;
+        }
 
-        other.dummy_ = ListHook();
+        if (dummy_.next_ != nullptr) {
+            dummy_.next_->prev_ = &dummy_;
+        }
+
+        other.dummy_ = ListHook{};
+    };
+
+    List &operator=(const List &) = delete;
+
+    List &operator=(List &&other) noexcept {
+        dummy_.next_ = other.dummy_.next_;
+        dummy_.prev_ = other.dummy_.prev_;
+
+        if (dummy_.prev_ != nullptr) {
+            dummy_.prev_->next_ = &dummy_;
+        }
+
+        if (dummy_.next_ != nullptr) {
+            dummy_.next_->prev_ = &dummy_;
+        }
+
+        other.dummy_ = ListHook{};
+        return *this;
     };
 
     ~List() {
@@ -97,26 +151,13 @@ public:
         }
     };
 
-    List& operator=(const List&) = delete;
-
-    List& operator=(List&& other) noexcept {
-        dummy_.next_ = other.dummy_.next_;
-        dummy_.prev_ = other.dummy_.prev_;
-
-        dummy_.prev_->next_ = &dummy_;
-        dummy_.next_->prev_ = &dummy_;
-
-        other.dummy_ = ListHook();
-
-        return *this;
-    };
-
     bool IsEmpty() const {
-        return Size() == 0;
+        const size_t empty_size = 0u;
+        return Size() == empty_size;
     };
 
     size_t Size() const {
-        size_t size = 0;
+        size_t size = 0u;
         auto cur = dummy_.next_;
 
         while (cur != nullptr && cur != &dummy_) {
@@ -127,7 +168,11 @@ public:
         return size;
     };
 
-    void PushBack(T* elem) {
+    void PushBack(T *elem) {
+        if (elem == nullptr) {
+            return;
+        }
+
         if (dummy_.prev_ == nullptr) {
             dummy_.next_ = elem;
             dummy_.prev_ = elem;
@@ -139,7 +184,11 @@ public:
         elem->LinkBefore(&dummy_);
     };
 
-    void PushFront(T* elem) {
+    void PushFront(T *elem) {
+        if (elem == nullptr) {
+            return;
+        }
+
         if (dummy_.next_ == nullptr) {
             dummy_.next_ = elem;
             dummy_.prev_ = elem;
@@ -151,18 +200,20 @@ public:
         elem->LinkBefore(dummy_.next_);
     };
 
-    T& Front() {
-        return *static_cast<T*>(dummy_.next_);
-    };
-    const T& Front() const {
-        return *static_cast<T*>(dummy_.next_);
+    T &Front() {
+        return *CastToType(dummy_.next_);
     };
 
-    T& Back() {
-        return *static_cast<T*>(dummy_.prev_);
+    const T &Front() const {
+        return *CastToType(dummy_.next_);
     };
-    const T& Back() const {
-        return *static_cast<T*>(dummy_.prev_);
+
+    T &Back() {
+        return *CastToType(dummy_.prev_);
+    };
+
+    const T &Back() const {
+        return *CastToType(dummy_.prev_);
     };
 
     void PopBack() {
@@ -192,31 +243,38 @@ public:
             return End();
         }
 
-        return Iterator(static_cast<T*>(dummy_.next_));
+        return Iterator(CastToType(dummy_.next_));
     };
 
     Iterator End() {
-        return Iterator(static_cast<T*>(&dummy_));
+        return Iterator(CastToType(&dummy_));
     };
 
-    Iterator IteratorTo(T* element) {
-        if (element->IsLinked()) {
+    Iterator IteratorTo(T *element) {
+        if (element != nullptr && element->IsLinked()) {
             return Iterator(element);
         }
 
         return End();
     };
 
+    static T *CastToType(ListHook* ptr) {
+        assert(ptr != nullptr && "Cast: Pointer must not be null");
+        return static_cast<T*>(ptr);
+    }
+
 private:
     ListHook dummy_;
 };
 
-template <typename T>
-typename List<T>::Iterator begin(List<T>& list) {
+template<typename T>
+typename List<T>::Iterator begin(List<T> &list) {
     return list.Begin();
 }
 
-template <typename T>
-typename List<T>::Iterator end(List<T>& list) {
+template<typename T>
+typename List<T>::Iterator end(List<T> &list) {
     return list.End();
 }
+
+}  // namespace project
